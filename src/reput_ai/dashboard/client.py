@@ -115,3 +115,88 @@ class ReputAPIClient:
         return self._request(
             "GET", f"{API_PREFIX}/funnel/short-link/{branch_id}", token=token
         )
+
+    # -- authentication (existing backend endpoints) ----------------------
+    def register(
+        self,
+        email: str,
+        password: str,
+        telegram_id: int | None = None,
+    ) -> dict[str, Any]:
+        """POST /api/v1/auth/register — creates the user (backend starts the trial)."""
+        payload: dict[str, Any] = {"email": email, "password": password}
+        if telegram_id is not None:
+            payload["telegram_id"] = telegram_id
+        return self._request("POST", f"{API_PREFIX}/auth/register", json=payload)
+
+    # -- CompanyBranch CRUD (existing backend endpoints) ------------------
+    def create_branch(
+        self,
+        token: str,
+        *,
+        name: str,
+        platform_type: str,
+        platform_url: str,
+        tone_of_voice: str,
+        is_active: bool = True,
+    ) -> dict[str, Any]:
+        """POST /api/v1/branches/ — create a CompanyBranch for the current user."""
+        return self._request(
+            "POST",
+            f"{API_PREFIX}/branches/",
+            token=token,
+            json={
+                "name": name,
+                "platform_type": platform_type,
+                "platform_url": platform_url,
+                "tone_of_voice": tone_of_voice,
+                "is_active": is_active,
+            },
+        )
+
+    def update_branch(
+        self,
+        token: str,
+        branch_id: str | UUID,
+        *,
+        name: str | None = None,
+        tone_of_voice: str | None = None,
+        is_active: bool | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /api/v1/branches/{id} — only fields exposed by ``BranchUpdate``.
+
+        ``platform_type``/``platform_url`` are intentionally absent: the existing
+        backend does not accept them on update.
+        """
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if tone_of_voice is not None:
+            payload["tone_of_voice"] = tone_of_voice
+        if is_active is not None:
+            payload["is_active"] = is_active
+        return self._request(
+            "PATCH",
+            f"{API_PREFIX}/branches/{branch_id}",
+            token=token,
+            json=payload,
+        )
+
+    # -- Review state transitions (existing backend endpoints) ------------
+    def update_review_status(
+        self,
+        token: str,
+        review_id: str | UUID,
+        status: str,
+        final_reply: str | None = None,
+    ) -> dict[str, Any]:
+        """PATCH /api/v1/reviews/{id}/status — backend review lifecycle transitions."""
+        payload: dict[str, Any] = {"status": status}
+        if final_reply is not None:
+            payload["final_reply"] = final_reply
+        return self._request(
+            "PATCH",
+            f"{API_PREFIX}/reviews/{review_id}/status",
+            token=token,
+            json=payload,
+        )

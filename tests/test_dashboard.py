@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import socket
 import subprocess
 import sys
@@ -37,11 +38,50 @@ def make_transport() -> httpx.MockTransport:
                 return httpx.Response(401, json={"detail": "Incorrect email or password"})
             return httpx.Response(200, json={"access_token": "jwt-token", "token_type": "bearer"})
 
+        if path == "/api/v1/auth/register":
+            payload = json.loads(request.content)
+            if payload.get("email") == "owner@example.com":
+                return httpx.Response(400, json={"detail": "Email already registered"})
+            return httpx.Response(
+                201,
+                json={
+                    "id": "88888888-8888-8888-8888-888888888888",
+                    "email": payload.get("email"),
+                    "telegram_id": payload.get("telegram_id"),
+                    "created_at": "2026-01-01T00:00:00",
+                },
+            )
+
         if auth != "Bearer jwt-token":
             return httpx.Response(401, json={"detail": "Could not validate credentials"})
 
         if path == "/api/v1/auth/me":
             return httpx.Response(200, json={"email": "owner@example.com"})
+        if path == "/api/v1/branches/" and request.method == "POST":
+            payload = json.loads(request.content)
+            return httpx.Response(
+                201,
+                json={
+                    "id": "55555555-5555-5555-5555-555555555555",
+                    "user_id": "99999999-9999-9999-9999-999999999999",
+                    **payload,
+                },
+            )
+        if path.startswith("/api/v1/branches/") and request.method == "PATCH":
+            payload = json.loads(request.content)
+            return httpx.Response(
+                200,
+                json={
+                    "id": path.rstrip("/").rsplit("/", 1)[1],
+                    "user_id": "99999999-9999-9999-9999-999999999999",
+                    "name": "Yandex Moscow",
+                    "platform_type": "YANDEX",
+                    "platform_url": "https://yandex.ru/maps/org/example",
+                    "tone_of_voice": "OFFICIAL",
+                    "is_active": True,
+                    **payload,
+                },
+            )
         if path == "/api/v1/branches/":
             return httpx.Response(
                 200,
@@ -57,6 +97,34 @@ def make_transport() -> httpx.MockTransport:
                     }
                 ],
             )
+        if path.startswith("/api/v1/reviews/") and path.endswith("/status"):
+            payload = json.loads(request.content)
+            if payload.get("status") not in {
+                "NEW",
+                "PENDING_APPROVAL",
+                "APPROVED",
+                "REJECTED",
+                "PUBLISHED",
+            }:
+                return httpx.Response(
+                    422, json={"detail": [{"msg": "Input should be a valid status"}]}
+                )
+            review = {
+                "branch_id": "11111111-1111-1111-1111-111111111111",
+                "external_id": "r1",
+                "author_name": "Alice",
+                "rating": 5,
+                "text": "Great place",
+                "id": path.rstrip("/").split("/")[-2],
+                "generated_reply": None,
+                "final_reply": None,
+                "status": payload["status"],
+                "created_at": "2026-01-01T10:00:00",
+            }
+            if "final_reply" in payload:
+                review["final_reply"] = payload["final_reply"]
+            return httpx.Response(200, json=review)
+
         if path == "/api/v1/reviews/":
             return httpx.Response(
                 200,
@@ -162,6 +230,148 @@ def test_unreachable_api_raises() -> None:
         bad.health()
     assert exc.value.status_code == 0
     bad.close()
+
+
+# ---------------------------------------------------------------------------
+# Client: registration, branch CRUD, review transitions (frontend API layer)
+# ---------------------------------------------------------------------------
+def test_register_returns_created_user(api: ReputAPIClient) -> None:
+    user = api.register("new-owner@example.com", "secret-pass", 777)
+    assert user["email"] == "new-owner@example.com"
+    assert user["telegram_id"] == 777
+
+
+def test_register_without_telegram_id(api: ReputAPIClient) -> None:
+    user = api.register("another@example.com", "secret-pass")
+    assert user["email"] == "another@example.com"
+    assert user["telegram_id"] is None
+
+
+def test_register_duplicate_email_rejected(api: ReputAPIClient) -> None:
+    with pytest.raises(DashboardAPIError) as exc:
+        api.register("owner@example.com", "secret-pass")
+    assert exc.value.status_code == 400
+    assert "already registered" in exc.value.detail
+
+
+def test_create_branch_sends_spec_fields(api: ReputAPIClient) -> None:
+    branch = api.create_branch(
+        "jwt-token",
+        name="Coffee Downtown",
+        platform_type="GIS2",
+        platform_url="https://2gis.ru/foobar",
+        tone_of_voice="FRIENDLY",
+        is_active=False,
+    )
+    assert branch["id"] == "55555555-5555-5555-5555-555555555555"
+    assert branch["platform_type"] == "GIS2"
+    assert branch["tone_of_voice"] == "FRIENDLY"
+    assert branch["is_active"] is False
+
+
+def test_update_branch_sends_only_supported_fields() -> None:
+    """PATCH /branches/{id} accepts only name/tone_of_voice/is_active (BranchUpdate)."""
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(200, json=captured["json"])
+
+    client = ReputAPIClient(
+        base_url="http://api.test", transport=httpx.MockTransport(handler)
+    )
+    try:
+        client.update_branch(
+            "jwt-token",
+            "11111111-1111-1111-1111-111111111111",
+            name="Renamed",
+            tone_of_voice="HUMOROUS",
+            is_active=False,
+        )
+    finally:
+        client.close()
+    assert captured["json"] == {
+        "name": "Renamed",
+        "tone_of_voice": "HUMOROUS",
+        "is_active": False,
+    }
+
+
+def test_update_review_status_with_final_reply(api: ReputAPIClient) -> None:
+    updated = api.update_review_status(
+        "jwt-token",
+        "22222222-2222-2222-2222-222222222222",
+        "APPROVED",
+        "Спасибо за отзыв!",
+    )
+    assert updated["status"] == "APPROVED"
+    assert updated["final_reply"] == "Спасибо за отзыв!"
+
+
+def test_update_review_status_omits_final_reply_when_not_provided() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(200, json=captured["json"])
+
+    client = ReputAPIClient(
+        base_url="http://api.test", transport=httpx.MockTransport(handler)
+    )
+    try:
+        client.update_review_status("jwt-token", "review-1", "REJECTED")
+    finally:
+        client.close()
+    assert captured["json"] == {"status": "REJECTED"}
+
+
+def test_update_review_status_rejects_unknown_status(api: ReputAPIClient) -> None:
+    with pytest.raises(DashboardAPIError) as exc:
+        api.update_review_status("jwt-token", "review-1", "PUBLISHED_MANUALLY")
+    assert exc.value.status_code == 422
+
+
+def test_mutations_require_valid_token(api: ReputAPIClient) -> None:
+    with pytest.raises(DashboardAPIError) as exc:
+        api.update_branch("bad-token", "branch-1", name="X")
+    assert exc.value.status_code == 401
+
+    with pytest.raises(DashboardAPIError) as exc:
+        api.update_review_status("bad-token", "review-1", "APPROVED")
+    assert exc.value.status_code == 401
+
+    with pytest.raises(DashboardAPIError) as exc:
+        api.create_branch(
+            "bad-token",
+            name="X",
+            platform_type="YANDEX",
+            platform_url="https://example.com",
+            tone_of_voice="OFFICIAL",
+        )
+    assert exc.value.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Dashboard option lists must match the specification / backend enums
+# ---------------------------------------------------------------------------
+def test_dashboard_options_match_specification() -> None:
+    from reput_ai.dashboard.options import (
+        PLATFORM_TYPES,
+        REVIEW_STATUSES,
+        SUBSCRIPTION_STATUSES,
+        TONE_OF_VOICE_OPTIONS,
+    )
+
+    assert PLATFORM_TYPES == ["YANDEX", "GIS2", "GOOGLE", "AVITO"]
+    assert TONE_OF_VOICE_OPTIONS == ["OFFICIAL", "FRIENDLY", "HUMOROUS"]
+    assert REVIEW_STATUSES == [
+        "NEW",
+        "PENDING_APPROVAL",
+        "APPROVED",
+        "REJECTED",
+        "PUBLISHED",
+    ]
+    assert SUBSCRIPTION_STATUSES == ["TRIAL", "ACTIVE", "PAST_DUE", "CANCELED"]
 
 
 # ---------------------------------------------------------------------------

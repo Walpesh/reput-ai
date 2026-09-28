@@ -116,10 +116,27 @@ pytest tests/test_e2e_headless.py
 Лёгкий дашборд на **Streamlit** (`src/reput_ai/dashboard/`), подключённый к существующему
 backend API через REST (`DASHBOARD_API_BASE_URL`), без прямого доступа к БД (Headless First):
 
-- `client.py` — синхронный httpx-клиент API (login/JWT, филиалы, отзывы, подписка, короткие ссылки);
+- `client.py` — централизованный синхронный httpx-клиент API: register/login/JWT (auth),
+  CRUD филиалов (`GET/POST /branches/`, `PATCH /branches/{id}`), список отзывов и переходы
+  статусов (`PATCH /reviews/{id}/status`), подписка, короткие ссылки воронки;
+- `options.py` — списки опций UI, полученные напрямую из backend-enum
+  (`PlatformType`, `ToneOfVoice`, `ReviewStatus`, `SubscriptionStatus`) — единственный
+  источник значений, ничего не дублируется и не выдумывается;
 - `metrics.py` — чистые KPI-агрегации (средний рейтинг, негатив 1–3★, распределение оценок);
-- `app.py` — UI: вход, KPI-карточки, фильтры (филиал/рейтинг/статус), график оценок,
-  статус подписки, короткая ссылка воронки, таблица отзывов.
+- `app.py` — UI со страницами (навигация в боковой панели):
+  - **Вход/Регистрация** — существующие `POST /auth/login`, `POST /auth/register` (токен
+    хранится только в `st.session_state`);
+  - **Обзор** — KPI-карточки, фильтры (филиал/рейтинг/статус), график оценок, сводка
+    подписки, короткая ссылка воронки, таблица отзывов;
+  - **Филиалы** — список, создание (name, platform_type, platform_url, tone_of_voice,
+    is_active) и настройка (PATCH backend принимает только name/tone_of_voice/is_active —
+    платформа и URL отображаются только для чтения);
+  - **Отзывы** — список с фильтрами, детали (author_name, rating, text, generated_reply,
+    final_reply, status, created_at) и существующие переходы статусов
+    (NEW/PENDING_APPROVAL/APPROVED/REJECTED/PUBLISHED);
+  - **Подписка** — status, trial_ends_at, paid_until, payment_provider_id;
+  - явная обработка ошибок API: 401 (сессия), 422 (валидация), 5xx (сервер),
+    недоступность сети (retry).
 
 Запуск локально:
 ```bash
@@ -160,8 +177,13 @@ sudo systemctl enable --now fastapi celery bot dashboard
 pytest tests/test_dashboard.py tests/test_deploy.py
 ```
 
-- `tests/test_dashboard.py` — API-клиент дашборда (MockTransport), KPI/фильтры,
+- `tests/test_dashboard.py` — API-клиент дашборда (MockTransport): auth/филиалы/отзывы/
+  подписка/воронка, KPI/фильтры, соответствия опций UI backend-enum,
   headless-запуск Streamlit (`/_stcore/health` = `ok`) без браузера;
+- `tests/test_dashboard_ui.py` — UI-workflow тесты через `streamlit.testing.v1.AppTest`:
+  вход/регистрация/выход, создание и настройка филиалов, детали отзывов и все 5
+  переходов статусов, отрисовка полей подписки, обработка ошибок 401/422/5xx/сети
+  (API мокается **только внутри тестов**);
 - `tests/test_deploy.py` — наличие и корректность `fastapi.service`/`celery.service`/`bot.service`,
   маршрутизация и SSL в Nginx, документация Certbot.
 
