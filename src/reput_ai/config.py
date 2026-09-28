@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     AI_PROCESSING_INTERVAL_MINUTES: int = 5
     AI_BATCH_SIZE: int = 10
 
+    # Web Dashboard (Streamlit) -> backend API
+    DASHBOARD_API_BASE_URL: str = "http://127.0.0.1:8000"
+    DASHBOARD_API_TIMEOUT_SECONDS: float = 15.0
+
 
 settings = Settings()
 

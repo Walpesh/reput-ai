@@ -1,0 +1,25 @@
+[Unit]
+Description=ReputationAI Telegram Bot (bot)
+Documentation=https://github.com/Walpesh/reput-ai
+After=network-online.target postgresql.service redis-server.service fastapi.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/reput-ai
+Environment="PATH=/opt/reput-ai/.venv/bin"
+EnvironmentFile=/opt/reput-ai/.env
+ExecStart=/opt/reput-ai/.venv/bin/python -m reput_ai.bot
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

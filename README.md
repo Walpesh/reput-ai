@@ -108,3 +108,60 @@ pytest tests/test_e2e_headless.py
 Покрывают системный сценарий без frontend-UI: регистрация → ветка/платформа → сбор отзывов
 воркером → LLM-обработка → воронка перехвата → биллинг (триал, webhook с валидацией подписи,
 смена статусов, автоприостановка).
+
+## Этап 4: Web Dashboard и деплой (systemd + Nginx/SSL)
+
+### 4.1. Web Dashboard (Streamlit)
+
+Лёгкий дашборд на **Streamlit** (`src/reput_ai/dashboard/`), подключённый к существующему
+backend API через REST (`DASHBOARD_API_BASE_URL`), без прямого доступа к БД (Headless First):
+
+- `client.py` — синхронный httpx-клиент API (login/JWT, филиалы, отзывы, подписка, короткие ссылки);
+- `metrics.py` — чистые KPI-агрегации (средний рейтинг, негатив 1–3★, распределение оценок);
+- `app.py` — UI: вход, KPI-карточки, фильтры (филиал/рейтинг/статус), график оценок,
+  статус подписки, короткая ссылка воронки, таблица отзывов.
+
+Запуск локально:
+```bash
+streamlit run src/reput_ai/dashboard/app.py --server.port 8501
+```
+
+### 4.2. Production systemd (Ubuntu Server, без Docker)
+
+Юниты в `deploy/systemd/` (см. `deploy/README.md`):
+
+| Юнит | Сервис |
+|------|--------|
+| `fastapi.service` | uvicorn, `127.0.0.1:8000` |
+| `celery.service` | celery worker + beat (опрос площадок, LLM, биллинг) |
+| `bot.service` | Telegram-бот (aiogram 3.x) |
+| `dashboard.service` | Streamlit-дашборд, `127.0.0.1:8501` |
+
+```bash
+sudo cp deploy/systemd/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now fastapi celery bot dashboard
+```
+
+### 4.3. Nginx + SSL (Certbot)
+
+`deploy/nginx/reput-ai.conf` — reverse proxy:
+
+- `/api/*`, `/docs`, `/redoc`, `/openapi.json` → FastAPI `:8000`;
+- `/` (всё остальное) → Streamlit `:8501` (с WebSocket-заголовками);
+- HTTP→HTTPS редирект, ACME webroot, TLS 1.2/1.3.
+
+Полная инструкция по выпуску и автопродлению SSL — `deploy/nginx/README.md`
+(`certbot --nginx -d your-domain.com`, `certbot renew --dry-run`).
+
+### 4.4. Тесты (Headless First)
+
+```bash
+pytest tests/test_dashboard.py tests/test_deploy.py
+```
+
+- `tests/test_dashboard.py` — API-клиент дашборда (MockTransport), KPI/фильтры,
+  headless-запуск Streamlit (`/_stcore/health` = `ok`) без браузера;
+- `tests/test_deploy.py` — наличие и корректность `fastapi.service`/`celery.service`/`bot.service`,
+  маршрутизация и SSL в Nginx, документация Certbot.
+

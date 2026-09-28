@@ -1,0 +1,26 @@
+[Unit]
+Description=ReputationAI Celery Worker & Beat (celery)
+Documentation=https://github.com/Walpesh/reput-ai
+After=network-online.target redis-server.service postgresql.service fastapi.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/reput-ai
+Environment="PATH=/opt/reput-ai/.venv/bin"
+EnvironmentFile=/opt/reput-ai/.env
+# -B runs the beat scheduler together with the worker (single unit per RFP)
+ExecStart=/opt/reput-ai/.venv/bin/celery -A reput_ai.workers.celery_app.celery_app worker -B --loglevel=info --concurrency=4
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

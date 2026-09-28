@@ -1,0 +1,25 @@
+[Unit]
+Description=ReputationAI Streamlit Web Dashboard (dashboard)
+Documentation=https://github.com/Walpesh/reput-ai
+After=network-online.target fastapi.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/reput-ai
+Environment="PATH=/opt/reput-ai/.venv/bin"
+EnvironmentFile=/opt/reput-ai/.env
+ExecStart=/opt/reput-ai/.venv/bin/streamlit run /opt/reput-ai/src/reput_ai/dashboard/app.py --server.port 8501 --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
