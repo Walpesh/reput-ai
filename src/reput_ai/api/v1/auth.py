@@ -8,6 +8,7 @@ from reput_ai.core.security import create_access_token, get_password_hash, verif
 from reput_ai.db.models.user import User
 from reput_ai.db.session import get_async_db
 from reput_ai.schemas.user import Token, UserCreate, UserRead
+from reput_ai.services.billing import BillingService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,6 +29,9 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_asyn
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # Every new account starts with the 14-day trial subscription.
+    await BillingService().ensure_trial_subscription(db, user.id)
     return user
 
 
