@@ -1,0 +1,17 @@
+[Unit]
+Description=ReputationAI FastAPI Backend Service
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/reput-ai
+Environment="PATH=/opt/reput-ai/.venv/bin"
+EnvironmentFile=/opt/reput-ai/.env
+ExecStart=/opt/reput-ai/.venv/bin/uvicorn reput_ai.main:app --host 127.0.0.1 --port 8000 --workers 4
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
