@@ -46,10 +46,11 @@ class CompanyBranch(Base):
     platform_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     tone_of_voice: Mapped[ToneOfVoice] = mapped_column(
         Enum(ToneOfVoice, name="tone_of_voice_enum"),
+        server_default=ToneOfVoice.OFFICIAL.value,
         default=ToneOfVoice.OFFICIAL,
         nullable=False,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True, nullable=False)
 
     user: Mapped["User"] = relationship("User", back_populates="branches")
     reviews: Mapped[list["Review"]] = relationship(
@@ -57,3 +58,4 @@ class CompanyBranch(Base):
         back_populates="branch",
         cascade="all, delete-orphan",
     )
+

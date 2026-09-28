@@ -15,20 +15,25 @@ def anyio_backend():
 
 
 @pytest.fixture
-async def db_session():
+async def test_engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    async_session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    async with async_session() as session:
-        yield session
-
+    yield engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-
     await engine.dispose()
+
+
+@pytest.fixture
+def session_factory(test_engine):
+    return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+@pytest.fixture
+async def db_session(session_factory):
+    async with session_factory() as session:
+        yield session
 
 
 @pytest.fixture
@@ -41,3 +46,4 @@ async def client(db_session: AsyncSession):
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+

@@ -34,6 +34,7 @@ class Subscription(Base):
     )
     status: Mapped[SubscriptionStatus] = mapped_column(
         Enum(SubscriptionStatus, name="subscription_status_enum"),
+        server_default=SubscriptionStatus.TRIAL.value,
         default=SubscriptionStatus.TRIAL,
         nullable=False,
     )
@@ -42,3 +43,4 @@ class Subscription(Base):
     payment_provider_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="subscriptions")
+

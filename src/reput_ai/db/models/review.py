@@ -45,6 +45,7 @@ class Review(Base):
     final_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ReviewStatus] = mapped_column(
         Enum(ReviewStatus, name="review_status_enum"),
+        server_default=ReviewStatus.NEW.value,
         default=ReviewStatus.NEW,
         nullable=False,
     )
@@ -55,3 +56,4 @@ class Review(Base):
     )
 
     branch: Mapped["CompanyBranch"] = relationship("CompanyBranch", back_populates="reviews")
+
