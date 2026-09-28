@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reput-ai"
+version = "0.1.0"
+description = "ReputationAI - Automated Review Management, AI Tone-of-Voice Response Generation, Telegram Approvals, and Feedback Funnel"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Walpesh", email = "walpesh1@gmail.com" }
+]
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "sqlalchemy>=2.0.28",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.1",
+    "aiogram>=3.4.1",
+    "celery>=5.3.6",
+    "redis>=5.0.3",
+    "httpx>=0.27.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-jose[cryptography]>=3.3.0",
+    "python-multipart>=0.0.9",
+    "tenacity>=8.2.3"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.1.1",
+    "pytest-asyncio>=0.23.5",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.3",
+    "mypy>=1.9.0",
+    "aiosqlite>=0.20.0"
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --asyncio-mode=auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
